@@ -1,5 +1,11 @@
 import cv2
 import numpy
+import functools
+from datetime import datetime
+
+
+pid = [0.4, 0.4, 0]
+pid2 = [0.4, 0.4, 0]
 
 
 def put_text(image, message, x, y, size=1, thickness=2, color=(255, 255, 0)):
@@ -16,6 +22,7 @@ def put_text(image, message, x, y, size=1, thickness=2, color=(255, 255, 0)):
     """
     cv2.putText(image, message, (x, y), cv2.FONT_HERSHEY_SIMPLEX, size, color, thickness)
 
+
 def distance_in_meters(dist, ppm):
     """
 
@@ -27,6 +34,20 @@ def distance_in_meters(dist, ppm):
         return dist / ppm
     else:
         return 0.0
+
+
+def log(m):
+    """
+
+    :param m:
+    :return:
+    """
+    now = datetime.now()
+    print(now.strftime("%d/%m/%Y, %H:%M:%S") + " " + str(m))
+
+
+def list_are_equals(l1, l2):
+    return functools.reduce(lambda x, y: x and y, map(lambda p, q: p == q, l1, l2), True)
 
 
 def distance_in_pixels(dist, ppm):
@@ -193,21 +214,21 @@ def movements(delta, delta_width, width_center, image):
         roll = delta[0]
         if roll > 0:
             messages.append("Move RIGHT")
-        else:
+        elif roll < 0:
             messages.append("Move LEFT")
 
     if delta[1] > width_center or delta[1] < -width_center:
         throttle = delta[1]
         if throttle > 0:
             messages.append("Move DOWN")
-        else:
+        elif throttle < 0:
             messages.append("Move UP")
 
     if delta_width > width_center or delta_width < -width_center:
         pitch = int(delta_width)
         if pitch > 0:
             messages.append("Move BACKWARD")
-        else:
+        elif pitch < 0:
             messages.append("Move FORWARD")
 
     i = 0
@@ -218,7 +239,7 @@ def movements(delta, delta_width, width_center, image):
     return [roll, throttle, pitch, yaw]
 
 
-def roll_throttle_pitch(roll, throttle, pitch, pid, previous_error):
+def roll_throttle_pitch(roll, throttle, pitch, previous_error):
     """
 
     :param roll:
@@ -228,46 +249,79 @@ def roll_throttle_pitch(roll, throttle, pitch, pid, previous_error):
     :param previous_error:
     :return:
     """
-    error = 0
-    speed = 0
-    value = 0
+
+    max_speed = 20
     # Method PID for speed
-    # Roll
+    # Roll (LEFT - RIGHT)
     if roll != 0:
         error = roll
         speed = pid[0] * error + pid[1] * (error - previous_error[0])
-        roll = int(numpy.clip(speed, -20, 20))
+        roll = int(numpy.clip(speed, -max_speed, max_speed))
         previous_error[0] = error
     else:
         previous_error[0] = 0
 
-    # Throttle
+    # Throttle (UP - DOWN)
     if throttle != 0:
         error = throttle
-        speed = pid[0] * error + pid[1] * (error - previous_error[1])
-        throttle = int(numpy.clip(speed, -20, 20))
+        speed = pid2[0] * error + pid2[1] * (error - previous_error[1])
+        throttle = int(numpy.clip(speed, -max_speed, max_speed))
         previous_error[1] = error
-        # # Override speed -20 or 20
-        # if throttle > 0:
-        #     throttle = 20
-        # else:
-        #     throttle = -20
     else:
         previous_error[1] = 0
 
-    # Pitch
+    # Pitch (FORWARD - BACKWARD)
     if pitch != 0:
         error = pitch
         speed = pid[0] * error + pid[1] * (error - previous_error[2])
-        pitch = int(numpy.clip(speed, -20, 20))
+        pitch = int(numpy.clip(speed, -max_speed, max_speed))
         previous_error[2] = error
     else:
         previous_error[2] = 0
 
-    # if me is None:
-    # print("Roll: ", roll, " Pitch: ", pitch, " Throttle: ", throttle, " Yaw: ", 0)
-    # else:
-    #     # left_right_velocity - forward_backward_velocity - up_down_velocity - yaw_velocity
-    #     me.send_rc_control(roll, pitch, throttle, 0)
+    return [roll, throttle, -pitch, previous_error]
 
-    return [roll, -pitch, -throttle, previous_error]
+
+def roll_throttle_pitch_v2(roll, throttle, pitch, previous_error):
+    """
+
+    :param roll:
+    :param throttle:
+    :param pitch:
+    :param previous_error:
+    :return:
+    """
+
+    max_speed = 20
+    # Method PID for speed
+    # Pitch (FORWARD - BACKWARD)
+    if pitch != 0:
+        error = pitch
+        speed = pid[0] * error + pid[1] * (error - previous_error[2])
+        pitch = int(numpy.clip(speed, -max_speed, max_speed))
+        previous_error[2] = error
+        roll = 0
+        throttle = 0
+        previous_error[0] = 0
+        previous_error[1] = 0
+    else:
+        previous_error[2] = 0
+        # Roll (LEFT - RIGHT)
+        if roll != 0:
+            error = roll
+            speed = pid[0] * error + pid[1] * (error - previous_error[0])
+            roll = int(numpy.clip(speed, -max_speed, max_speed))
+            previous_error[0] = error
+        else:
+            previous_error[0] = 0
+
+        # Throttle (UP - DOWN)
+        if throttle != 0:
+            error = throttle
+            speed = pid2[0] * error + pid2[1] * (error - previous_error[1])
+            throttle = int(numpy.clip(speed, -max_speed, max_speed))
+            previous_error[1] = error
+        else:
+            previous_error[1] = 0
+
+    return [roll, throttle, pitch, previous_error]

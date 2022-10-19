@@ -104,10 +104,13 @@ def read(img, me=None, m=None, size=None):
         # Area Difference
         if a1 > 0 and a2 > 0:
             delta_area = (1 - a2/a1) * 100
+        else:
+            delta_area = 0
         # print(p1, " - ", p2)
         angle = get_angle_between_two_points(p1, p2)
         f.put_text(img_resize, "Angle: " + str(round(angle, 2)) + " degrees", 600, 140)
-        f.put_text(img_resize, "Delta Area: " + str(round(delta_area, 2)) + "%", 600, 170)
+        if delta_area != 0:
+            f.put_text(img_resize, "Delta Area: " + str(round(delta_area, 2)) + "%", 600, 170)
         distance = f.distance_in_meters(math.dist(p1, p2), ppm)
         # Delta yaw
         delta_d = int((distance - area_width) * 100)
@@ -128,6 +131,13 @@ def read(img, me=None, m=None, size=None):
         movements = f.movements((delta_x, delta_y), delta_d, center_width * 100, img_resize)
         # movements = [delta_x, delta_y, delta_d]
         send_message("Roll - Throttle - Pitch - Yaw: " + str(movements), messages)
+        # If is in target
+        if all(item == 0 for item in movements):
+            result = "ON TARGET"
+        else:
+            result = "SUCCESS"
+    else:
+        result = "NOT FOUND"
 
     if m is None:
         m = []
@@ -140,4 +150,4 @@ def read(img, me=None, m=None, size=None):
     # cv2.imshow("Left", img_left)
     # cv2.imshow("Right", img_right)
 
-    return movements, img_resize
+    return result, movements, img_resize

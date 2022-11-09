@@ -39,13 +39,16 @@ def get_angle_between_two_points(point1, point2):
     return angle
 
 
-def read(img, me=None, m=None, size=None):
+def read(img, me=None, m=None, size=None, print=True, range_ids=None, output=False):
     """
 
     :param img:
     :param me:
     :param m:
     :param size:
+    :param print:
+    :param range_ids:
+    :param output:
     :return:
     """
     # Datetime
@@ -56,7 +59,7 @@ def read(img, me=None, m=None, size=None):
     ppm = 420
     # Area to scan
     area_height = 1.20
-    area_width = 1.40
+    area_width = 1.50
     area_ratio = area_height / area_width
     # In cm
     center_width = 0.10
@@ -67,6 +70,8 @@ def read(img, me=None, m=None, size=None):
     else:
         img_resize = img
 
+    # 75% - 100%
+    half = round(img_resize.shape[0] // 1.33333)
     # Middle point of image
     middle = img_resize.shape[1] // 2
     # Width of image
@@ -74,31 +79,36 @@ def read(img, me=None, m=None, size=None):
     # Height of image
     h = img_resize.shape[0]
     # Left side of image
-    img_left = img_resize[0:h, 0:middle]
+    img_left = img_resize[half:h, 0:middle]
     # Right side of image
-    img_right = img_resize[0:h, middle:w]
+    img_right = img_resize[half:h, middle:w]
+
+    f.draw_binding_box(img_resize, (0, half), (0, h), (w, half), (w, h))
 
     c_x = int(w // 2)
     c_y = int(h // 2)
 
     # Aruco dictionary 4x4_50
-    aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_50)
+    aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_250)
     # Aruco params
     aruco_params = cv2.aruco.DetectorParameters_create()
     # Reading aruco markers detected on the left side
-    l_markers = f.draw_markers(img_left, img_resize, aruco_dict, aruco_params, 0)
+    l_markers = f.draw_markers(img_left, img_resize, aruco_dict, aruco_params, 0, range_ids, half)
     # Reading aruco markers detected on the right side
-    r_markers = f.draw_markers(img_right, img_resize, aruco_dict, aruco_params, middle)
+    r_markers = f.draw_markers(img_right, img_resize, aruco_dict, aruco_params, middle, range_ids, half)
 
     if me is not None:
         send_message("Battery Level: " + str(me.get_battery()) + "%", messages)
 
     movements = [0, 0, 0, 0]
 
+    ids = []
+
     # Distance
     if len(l_markers) == 1 and len(r_markers) == 1:
         p1 = l_markers[0][0]
         p2 = r_markers[0][0]
+        ids = [l_markers[0][1], r_markers[0][1]]
         a1 = l_markers[0][2]
         a2 = r_markers[0][2]
         # Area Difference
@@ -108,13 +118,16 @@ def read(img, me=None, m=None, size=None):
             delta_area = 0
         # print(p1, " - ", p2)
         angle = get_angle_between_two_points(p1, p2)
-        f.put_text(img_resize, "Angle: " + str(round(angle, 2)) + " degrees", 600, 140)
+        if print:
+            f.put_text(img_resize, "Angle: " + str(round(angle, 2)) + " degrees", 600, 140)
         if delta_area != 0:
-            f.put_text(img_resize, "Delta Area: " + str(round(delta_area, 2)) + "%", 600, 170)
+            if print:
+                f.put_text(img_resize, "Delta Area: " + str(round(delta_area, 2)) + "%", 600, 170)
         distance = f.distance_in_meters(math.dist(p1, p2), ppm)
         # Delta yaw
         delta_d = int((distance - area_width) * 100)
-        f.put_text(img_resize, "Delta D: " + str(delta_d) + " cms", 600, 110)
+        if print:
+            f.put_text(img_resize, "Delta D: " + str(delta_d) + " cms", 600, 110)
         # ppm from image
         ppmi = distance / area_width * ppm
         width_center = f.distance_in_pixels(center_width, ppmi)
@@ -125,10 +138,11 @@ def read(img, me=None, m=None, size=None):
         delta_x, delta_y = f.draw_rectangle(img_resize, p1, p2, distance, (c_x, c_y), width_center)
         delta_x, delta_y = int(f.distance_in_meters(delta_x, ppmi / 100)), int(
             f.distance_in_meters(delta_y, ppmi / 100))
-        f.put_text(img_resize, "Delta X: " + str(int(delta_x)) + " cms", 600, 50)
-        f.put_text(img_resize, "Delta Y: " + str(int(delta_y)) + " cms", 600, 80)
+        if print:
+            f.put_text(img_resize, "Delta X: " + str(int(delta_x)) + " cms", 600, 50)
+            f.put_text(img_resize, "Delta Y: " + str(int(delta_y)) + " cms", 600, 80)
         # def movements(delta, delta_width, width_center, image):
-        movements = f.movements((delta_x, delta_y), delta_d, center_width * 100, img_resize)
+        movements = f.movements((delta_x, delta_y), delta_d, center_width * 100, img_resize, print=print)
         # movements = [delta_x, delta_y, delta_d]
         send_message("Roll - Throttle - Pitch - Yaw: " + str(movements), messages)
         # If is in target
@@ -144,10 +158,69 @@ def read(img, me=None, m=None, size=None):
     for message in m:
         send_message(message, messages)
 
-    print_messages(img_resize, messages)
-    cv2.imshow("Output", img_resize)
+    if print:
+        print_messages(img_resize, messages)
+    if output:
+        cv2.imshow("Output", img_resize)
 
     # cv2.imshow("Left", img_left)
     # cv2.imshow("Right", img_right)
 
-    return result, movements, img_resize
+    return result, movements, img_resize, ids
+
+
+def read_markers(img, me=None, m=None, size=None, _print=True, range_ids=None, offset_height=1.4286):
+    """
+
+    :param img:
+    :param me:
+    :param m:
+    :param size:
+    :param _print:
+    :param range_ids:
+    :param offset_height:
+    :return:
+    """
+    # Datetime
+    now = datetime.now()
+    send_message(now.strftime("%d/%m/%Y, %H:%M:%S"), messages)
+
+    # Resizing image
+    if size is not None:
+        img_resize = cv2.resize(img, size)
+    else:
+        img_resize = img
+
+    # 50% - 100%
+    half = round(img_resize.shape[0] // offset_height)
+    # Width of image
+    w = img_resize.shape[1]
+    # Height of image
+    h = img_resize.shape[0]
+
+    img_markers = img_resize[half:h, 0:w]
+
+    f.draw_binding_box(img_resize, (0, half), (0, h), (w, half), (w, h))
+
+    # Aruco dictionary 4x4_50
+    aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_250)
+    # Aruco params
+    aruco_params = cv2.aruco.DetectorParameters_create()
+    # Reading aruco markers detected
+    all_markers = f.draw_markers(img_markers, img_resize, aruco_dict, aruco_params, 0, range_ids, half)
+
+    if me is not None:
+        send_message("Battery Level: " + str(me.get_battery()) + "%", messages)
+
+    result = "SUCCESS"
+
+    if m is None:
+        m = []
+    for message in m:
+        send_message(message, messages)
+
+    if _print:
+        print_messages(img_resize, messages)
+    cv2.imshow("Output Markers", img_resize)
+
+    return result, all_markers, img_resize

@@ -1,7 +1,8 @@
 import frameProcessing as fp
 import cv2
 
-img = cv2.imread("Resources/tello_photo_200.png")
+img = cv2.imread("Output/20221107_214554.jpg")
+img = cv2.resize(img, (1024, 768))
 fp.read(img)
 
 while True:

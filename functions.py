@@ -3,7 +3,6 @@ import numpy
 import functools
 from datetime import datetime
 
-
 pid = [0.4, 0.4, 0]
 pid2 = [0.4, 0.4, 0]
 
@@ -59,19 +58,20 @@ def distance_in_pixels(dist, ppm):
     return dist * ppm
 
 
-def get_corners(marker_corner, offset=0):
+def get_corners(marker_corner, offset=0, offset_height=0):
     """
 
     :param marker_corner:
     :param offset:
+    :param offset_height:
     :return:
     """
     corners = marker_corner.reshape((4, 2))
     (top_left, top_right, bottom_right, bottom_left) = corners
-    top_right = (int(top_right[0]) + offset, int(top_right[1]))
-    bottom_right = (int(bottom_right[0]) + offset, int(bottom_right[1]))
-    bottom_left = (int(bottom_left[0]) + offset, int(bottom_left[1]))
-    top_left = (int(top_left[0]) + offset, int(top_left[1]))
+    top_right = (int(top_right[0]) + offset, int(top_right[1]) + offset_height)
+    bottom_right = (int(bottom_right[0]) + offset, int(bottom_right[1]) + offset_height)
+    bottom_left = (int(bottom_left[0]) + offset, int(bottom_left[1]) + offset_height)
+    top_left = (int(top_left[0]) + offset, int(top_left[1]) + offset_height)
 
     return top_left, top_right, bottom_left, bottom_right
 
@@ -110,29 +110,44 @@ def area_polygon(polygon):
     return a
 
 
-def draw_binding_boxes(image, corners, ids, offset):
+def draw_binding_boxes(image, corners, ids, offset, range_ids=None, offset_height=0):
     """
 
     :param image:
     :param corners:
     :param ids:
     :param offset:
+    :param range_ids:
+    :param offset_height:
     :return:
     """
     result = []
     for (marker_corner, marker_id) in zip(corners, ids):
-        (top_left, top_right, bottom_left, bottom_right) = get_corners(marker_corner, offset)
-        # Draw binding box
-        draw_binding_box(image, top_left, top_right, bottom_left, bottom_right)
-        x = int((top_left[0] + bottom_right[0]) // 2)
-        y = int((top_left[1] + bottom_right[1]) // 2)
-        cv2.circle(image, (x, y), 4, (0, 0, 255), -1)
-        # (x, y) coordinates, marker id, area
-        result.append([[x, y], marker_id, area_polygon([top_left, top_right, bottom_right, bottom_left])])
+        """
+        Filtering
+        1: Level and size markers
+        2: Direction markers
+        3: Numeric markers
+        """
+        include = False
+        if range_ids is None:
+            include = True
+        elif marker_id in range_ids:
+            include = True
+
+        if include:
+            (top_left, top_right, bottom_left, bottom_right) = get_corners(marker_corner, offset, offset_height)
+            # Draw binding box
+            draw_binding_box(image, top_left, top_right, bottom_left, bottom_right)
+            x = int((top_left[0] + bottom_right[0]) // 2)
+            y = int((top_left[1] + bottom_right[1]) // 2)
+            cv2.circle(image, (x, y), 4, (0, 0, 255), -1)
+            # (x, y) coordinates, marker id, area
+            result.append([[x, y], marker_id, area_polygon([top_left, top_right, bottom_right, bottom_left])])
     return result
 
 
-def draw_markers(image_source, image, dictionary, params, offset):
+def draw_markers(image_source, image, dictionary, params, offset, range_ids=None, offset_height=0):
     """
 
     :param image_source:
@@ -140,6 +155,8 @@ def draw_markers(image_source, image, dictionary, params, offset):
     :param dictionary:
     :param params:
     :param offset:
+    :param range_ids:
+    :param offset_height:
     :return:
     """
     result = []
@@ -148,7 +165,7 @@ def draw_markers(image_source, image, dictionary, params, offset):
     if len(corners) > 0:
         ids = ids.flatten()
         # Loop through the detected ArUco corners
-        result = draw_binding_boxes(image, corners, ids, offset)
+        result = draw_binding_boxes(image, corners, ids, offset, range_ids, offset_height)
     return result
 
 
@@ -195,13 +212,14 @@ def move_right_left(distance):
     """
 
 
-def movements(delta, delta_width, width_center, image):
+def movements(delta, delta_width, width_center, image, print=True):
     """
 
     :param delta:
     :param delta_width:
     :param width_center:
     :param image:
+    :param print:
     :return:
     """
     roll = 0
@@ -232,9 +250,10 @@ def movements(delta, delta_width, width_center, image):
             messages.append("Move FORWARD")
 
     i = 0
-    for message in messages:
-        cv2.putText(image, message, (50, 50 + i * 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
-        i += 1
+    if print:
+        for message in messages:
+            cv2.putText(image, message, (50, 50 + i * 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
+            i += 1
 
     return [roll, throttle, pitch, yaw]
 
@@ -282,23 +301,26 @@ def roll_throttle_pitch(roll, throttle, pitch, previous_error):
     return [roll, throttle, -pitch, previous_error]
 
 
-def roll_throttle_pitch_v2(roll, throttle, pitch, previous_error):
+def roll_throttle_pitch_v2(roll, throttle, pitch, previous_error, max_speed=20):
     """
 
     :param roll:
     :param throttle:
     :param pitch:
     :param previous_error:
+    :param max_speed:
     :return:
     """
 
-    max_speed = 20
     # Method PID for speed
     # Pitch (FORWARD - BACKWARD)
     if pitch != 0:
         error = pitch
         speed = pid[0] * error + pid[1] * (error - previous_error[2])
-        pitch = int(numpy.clip(speed, -max_speed, max_speed))
+        if speed > 0:
+            pitch = int(numpy.clip(speed, 10, max_speed))
+        else:
+            pitch = int(numpy.clip(speed, -max_speed, -10))
         previous_error[2] = error
         roll = 0
         throttle = 0
@@ -310,7 +332,10 @@ def roll_throttle_pitch_v2(roll, throttle, pitch, previous_error):
         if roll != 0:
             error = roll
             speed = pid[0] * error + pid[1] * (error - previous_error[0])
-            roll = int(numpy.clip(speed, -max_speed, max_speed))
+            if speed > 0:
+                roll = int(numpy.clip(speed, 10, max_speed))
+            else:
+                roll = int(numpy.clip(speed, -max_speed, -10))
             previous_error[0] = error
         else:
             previous_error[0] = 0
@@ -319,9 +344,22 @@ def roll_throttle_pitch_v2(roll, throttle, pitch, previous_error):
         if throttle != 0:
             error = throttle
             speed = pid2[0] * error + pid2[1] * (error - previous_error[1])
-            throttle = int(numpy.clip(speed, -max_speed, max_speed))
+            if speed > 0:
+                throttle = int(numpy.clip(speed, -max_speed, max_speed - 10))
+            else:
+                throttle = int(numpy.clip(speed, -max_speed - 0, -18))
             previous_error[1] = error
         else:
             previous_error[1] = 0
 
     return [roll, throttle, pitch, previous_error]
+
+
+def img_write(prefix, img):
+    """
+
+    :param prefix:
+    :param img:
+    :return:
+    """
+    cv2.imwrite(prefix + "_output.png", img)

@@ -5,12 +5,20 @@ import cv2
 from datetime import datetime
 from datetime import timedelta
 
+markers_range = range(0, 10)
+directions_range = range(11, 15)
+numbers_range = range(100, 227)
+
+id_left = 0
+id_right = 1
+
 global_previous_error = [0, 0, 0]
 
 messages = []
 pause = False
 
 size = (1024, 768)
+# size = (2592, 1936)
 
 movements_from_image = None
 # Todo: Include YAW
@@ -25,15 +33,29 @@ time_on_target = 0
 # Amount of seconds continuously on target
 secs_on_target = 0
 
+now = datetime.now()
+# Save on Output directory
+prefix = now.strftime("Output/%Y%m%d%H%M%S")
+
+take_picture = False
+
 fps = 30
 # cap = cv2.VideoCapture("Resources/tello_video_test.mp4")
 # cap = cv2.VideoCapture("Resources/output.avi")
 
+
+cap = cv2.VideoCapture("Video/20221108234403_output.avi")
+
 # cap = cv2.VideoCapture("Video/20221015214059_output_TARGET.avi")
 
-cap = cv2.VideoCapture("Video/20221015224958_output_CRASH.avi")
+# cap = cv2.VideoCapture("Video/20221015224958_output_CRASH.avi")
+
+# cap = cv2.VideoCapture("Video/20221015115525 output_EJEMPLO1.avi")
+
+# cap = cv2.VideoCapture("Video/20221015162157 output_EJEMPLO2.avi")
 
 gray_scale = False
+
 
 def land():
     log("Land")
@@ -81,7 +103,8 @@ while cap.isOpened():
     # print(img.shape)
 
     # Processing frame
-    result, movements_from_image, img_resized = fp.read(img, m=messages, size=(1024, 768))
+    result, movements_from_image, img_resized, _ = fp.read(img, m=messages, size=size, print=True,
+                                                           range_ids=markers_range, output=True)
     messages.clear()
     messages.append("Time on Target: " + str(timedelta(seconds=secs_on_target)))
     messages.append("Time Elapsed: " + str(timedelta(seconds=int(time.time() - time_started))))
@@ -117,8 +140,8 @@ while cap.isOpened():
         3: up_down_velocity (Throttle)
         4: yaw_velocity (Yaw)
         """
-        log("SEND_RC_CONTROL: [" + str(result[0]) + ", " + str(-result[2]) + "," + str(-result[1]) + "," + str(
-            0) + "]")
+        # log("SEND_RC_CONTROL: [" + str(result[0]) + ", " + str(-result[2]) + "," + str(-result[1]) + "," + str(
+        #     0) + "]")
         message = ""
         """
         Roll
@@ -160,7 +183,7 @@ while cap.isOpened():
         else:
             message += " HOVER "
         direction = message
-        log("MODE: AUTONOMOUS " + message)
+        # log("MODE: AUTONOMOUS " + message)
         messages.append("MODE: AUTONOMOUS " + message)
         # ToDo: Consider YAW parameter
         last_movements = result[0:3]
@@ -187,6 +210,32 @@ while cap.isOpened():
             log("Time on target completed!, Good job!")
             end_flight()
 
+    if take_picture:
+        # Take picture
+        now = datetime.now()
+        prefix = now.strftime("Output/%Y%m%d%H%M%S")
+        f.img_write(prefix, img_resized)
+        # Markers
+        _, number_markers, numbers_img = fp.read_markers(img, size=size, _print=True, range_ids=numbers_range)
+        f.img_write(prefix + "_numbers", numbers_img)
+        log("Number markers: ")
+        log(number_markers)
+        # If only four markers was found
+        if len(number_markers) == 4:
+            # _, direction_markers, directions_img = fp.read_markers(img, size=size, print=True,
+            #       range_ids=directions_range)
+            # f.img_write(prefix + "_directions", directions_img)
+            # log("Directions markers: ")
+            # log(direction_markers)
+            r = ""
+            for m in number_markers:
+                if r == "":
+                    r += str(m[1])
+                else:
+                    r = r + " - " + str(m[1])
+            log(r)
+            take_picture = False
+
     k = cv2.waitKeyEx(1)
 
     if k == -1:
@@ -197,6 +246,8 @@ while cap.isOpened():
     elif k == ord('q') or k == 27:
         # Quit
         break
+    elif k == ord('s'):
+        take_picture = True
     elif k == ord('g'):
         gray_scale = not gray_scale
     elif k == ord('0'):

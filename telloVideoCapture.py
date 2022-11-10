@@ -11,12 +11,12 @@ from datetime import timedelta
 step = "IDLE"
 step_datetime_started = 0
 step_secs = 0
-max_secs_take_off = 5
-max_secs_start_location = 5
-max_secs_focus = 10
-max_secs_take_picture = 5
+max_secs_take_off = 15
+max_secs_start_location = 10
+max_secs_focus = 25
+max_secs_take_picture = 8
 max_secs_find_directions = 5
-max_secs_next_location = 5
+max_secs_next_location = 8
 err_message = ""
 # Level
 level_marker = 0
@@ -24,7 +24,7 @@ side_marker = 0
 min_level = 2
 max_level = 10
 # Speed
-speed = 20
+speed = 25
 direction = "UP"
 
 # ArUco Marker Constants
@@ -90,7 +90,7 @@ def end_flight():
     land()
     log("Stream off")
     messages.append("Stream OFF")
-    me.streamoff()
+    # me.streamoff()
     # Set five seconds to exit loop and close windows
     time_end = time.time() + 5
 
@@ -144,6 +144,7 @@ while True:
     if time_end > 0:
         if time.time() > time_end:
             # Todo: Track statistics, time session, battery consumption, etc.
+            me.streamoff()
             log("Bye")
             break
 
@@ -179,7 +180,10 @@ while True:
             # Looking for markers
             _, result_markers, result_img = fp.read_markers(img_resize, me, size=None,
                                                             range_ids=markers_range)
+            img_resize = cv2.resize(result_img, size)
+            f.put_text(img_resize, "TAKE OFF", 528, 50)
             if len(result_markers) > 0:
+                f.put_text(img_resize, "SUCCESS", 528, 80)
                 f.img_write(prefix + "_TAKE_OFF", result_img)
                 # Next step
                 # Stop throttleQ
@@ -188,6 +192,8 @@ while True:
                 # Reset flags
                 step_datetime_started = 0
                 step_secs = 0
+            else:
+                f.put_text(img_resize, "NOT FOUND", 528, 80)
     elif step == 'START_LOCATION':
         if step_datetime_started == 0:
             log("START LOCATION START...")
@@ -200,6 +206,8 @@ while True:
         else:
             # Looking for markers
             result, _, result_img, _ = fp.read(img_resize, me, range_ids=markers_range)
+            img_resize = cv2.resize(result_img, size)
+            f.put_text(img_resize, "START LOCATION", 528, 50)
             if result == "SUCCESS":
                 f.img_write(prefix + "_START_LOCATION", result_img)
                 step = 'FOCUS'
@@ -344,27 +352,41 @@ while True:
         # Finding number markers...
         _, number_markers, numbers_img = fp.read_markers(img, size=None, _print=True,
                                                          range_ids=numbers_range, offset_height=2)
+        img_resize = cv2.resize(numbers_img, size)
+        f.put_text(img_resize, "TAKE PICTURE", 528, 50)
         # If we get four markers
         if len(number_markers) == 4:
+            f.put_text(img_resize, "SUCCESS", 528, 80)
             f.img_write(prefix_result + "_INFO", numbers_img)
             step = 'FIND_DIRECTIONS'
             # Reset flags
             step_datetime_started = 0
             step_secs = 0
             markers = False
+            r = ""
+            for m in number_markers:
+                if r == "":
+                    r += str(m[1])
+                else:
+                    r = r + " - " + str(m[1])
+            f.put_text(img_resize, r, 528, 110)
         else:
             # If we found some markers ..
             if len(number_markers) > 0:
                 markers = True
+            else:
+                f.put_text(img_resize, "NOT FOUND", 528, 80)
             if step_secs > max_secs_take_picture:
                 if markers:
                     # If there is at least one marker, result = ERROR_READING
                     err_message = "Cannot get four markers! Error"
                     suffix = "_ERROR"
+                    f.put_text(img_resize, "SCAN INCOMPLETE", 528, 110)
                 else:
                     # If there is no markers, result = EMPTY
                     err_message = "Number markers not found! Empty Location"
                     suffix = "_EMPTY"
+                    f.put_text(img_resize, "LOCATION EMPTY", 528, 110)
                 # Stop looking for number markers...
                 f.img_write(prefix_result + suffix, numbers_img)
                 step = 'FIND_DIRECTIONS'
@@ -380,6 +402,7 @@ while True:
         elif step_datetime_started > 0:
             step_secs = round(time.time() - step_datetime_started)
         if step_secs > max_secs_find_directions:
+            f.put_text(img_resize, "CONTINUE", 528, 80)
             err_message = "Max time to find directions reached! Continue"
             log(err_message)
             step = 'NEXT_LOCATION'
@@ -392,6 +415,8 @@ while True:
             # Finding change direction markers...
             _, direction_markers, directions_img = fp.read_markers(img, size=None, _print=True,
                                                                    range_ids=directions_range)
+            img_resize = cv2.resize(directions_img, size)
+            f.put_text(img_resize, "FIND DIRECTIONS", 528, 50)
             # If we get one marker
             if len(direction_markers) == 1:
                 if direction_markers[0][1] == 11:
@@ -406,13 +431,17 @@ while True:
                     direction = "LAND"
                 f.img_write(prefix_result + "_DIRECTIONS", directions_img)
                 if direction == "LAND":
+                    f.put_text(img_resize, "LANDING...", 528, 80)
                     step = 'END'
                     direction = "HOVER"
                 else:
                     step = 'NEXT_LOCATION'
+                    f.put_text(img_resize, "MOVE " + direction, 528, 80)
                 # Reset flags
                 step_datetime_started = 0
                 step_secs = 0
+            else:
+                f.put_text(img_resize, "NOT FOUND", 528, 80)
     elif step == 'NEXT_LOCATION':
         if step_datetime_started == 0:
             log("NEXT LOCATION START...")
@@ -449,7 +478,10 @@ while True:
             else:
                 _, next_location_markers, next_location_img = fp.read_markers(img, size=None, _print=True,
                                                                               range_ids=next_location_range)
+                img_resize = cv2.resize(next_location_img, size)
+                f.put_text(img_resize, "NEXT LOCATION", 528, 50)
                 if len(next_location_markers) == 1:
+                    f.put_text(img_resize, "SUCCESS", 528, 80)
                     step = "FOCUS"
                     f.img_write(prefix_result + "_NEXT_LOCATION", next_location_img)
                     # Reset flags
@@ -457,6 +489,8 @@ while True:
                     step_secs = 0
                     # Stop movement
                     move(me, "HOVER", 0)
+                else:
+                    f.put_text(img_resize, "NOT FOUND", 528, 80)
     elif step == 'ABORT':
         log("ABORT")
         log(err_message)

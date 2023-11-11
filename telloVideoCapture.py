@@ -14,9 +14,9 @@ step_secs = 0
 max_secs_take_off = 15
 max_secs_start_location = 10
 max_secs_focus = 25
-max_secs_take_picture = 8
-max_secs_find_directions = 5
-max_secs_next_location = 8
+max_secs_take_picture = 4
+max_secs_find_directions = 4
+max_secs_next_location = 4
 err_message = ""
 # Level
 level_marker = 0
@@ -257,9 +257,10 @@ while True:
                 time_on_target = 0
                 secs_on_target = 0
                 # log(result)
+                # Regulate max speed
                 result = f.roll_throttle_pitch_v2(movements_from_image[0], movements_from_image[1],
                                                   movements_from_image[2],
-                                                  global_previous_error, max_speed=25)
+                                                  global_previous_error, max_speed=10)
                 # ToDo: Include YAW in parameters
                 global_previous_error = result[3]
 
@@ -339,8 +340,10 @@ while True:
                 # Reset flags
                 step_datetime_started = 0
                 step_secs = 0
+                me.send_rc_control(0, 0, 0, 0)
     # Taking picture
     elif step == 'TAKE_PICTURE':
+        me.send_rc_control(0, 0, 0, 0)
         if step_datetime_started == 0:
             log("TAKE PICTURE START...")
             messages.append("TAKE PICTURE START...")
@@ -395,6 +398,7 @@ while True:
                 step_secs = 0
                 markers = False
     elif step == 'FIND_DIRECTIONS':
+        me.send_rc_control(0, 0, 0, 0)
         if step_datetime_started == 0:
             log("FIND DIRECTIONS START...")
             messages.append("FIND DIRECTIONS START...")
@@ -443,6 +447,7 @@ while True:
             else:
                 f.put_text(img_resize, "NOT FOUND", 528, 80)
     elif step == 'NEXT_LOCATION':
+        me.send_rc_control(0, 0, 0, 0)
         if step_datetime_started == 0:
             log("NEXT LOCATION START...")
             step_datetime_started = time.time()

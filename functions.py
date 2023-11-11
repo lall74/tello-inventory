@@ -301,7 +301,7 @@ def roll_throttle_pitch(roll, throttle, pitch, previous_error):
     return [roll, throttle, -pitch, previous_error]
 
 
-def roll_throttle_pitch_v2(roll, throttle, pitch, previous_error, max_speed=20):
+def roll_throttle_pitch_v2(roll, throttle, pitch, previous_error, max_speed=10):
     """
 
     :param roll:
@@ -318,9 +318,9 @@ def roll_throttle_pitch_v2(roll, throttle, pitch, previous_error, max_speed=20):
         error = pitch
         speed = pid[0] * error + pid[1] * (error - previous_error[2])
         if speed > 0:
-            pitch = int(numpy.clip(speed, 10, max_speed))
+            pitch = int(numpy.clip(speed, 1, max_speed))
         else:
-            pitch = int(numpy.clip(speed, -max_speed, -10))
+            pitch = int(numpy.clip(speed, -max_speed, -1))
         previous_error[2] = error
         roll = 0
         throttle = 0
@@ -333,9 +333,11 @@ def roll_throttle_pitch_v2(roll, throttle, pitch, previous_error, max_speed=20):
             error = roll
             speed = pid[0] * error + pid[1] * (error - previous_error[0])
             if speed > 0:
-                roll = int(numpy.clip(speed, 10, max_speed))
+                # 10
+                roll = int(numpy.clip(speed, 5, max_speed))
             else:
-                roll = int(numpy.clip(speed, -max_speed, -10))
+                # -10
+                roll = int(numpy.clip(speed, -max_speed, -5))
             previous_error[0] = error
         else:
             previous_error[0] = 0
@@ -345,9 +347,71 @@ def roll_throttle_pitch_v2(roll, throttle, pitch, previous_error, max_speed=20):
             error = throttle
             speed = pid2[0] * error + pid2[1] * (error - previous_error[1])
             if speed > 0:
-                throttle = int(numpy.clip(speed, -max_speed, max_speed - 10))
+                # Adjust by -10 for long distances
+                # throttle = int(numpy.clip(speed, -max_speed, max_speed - 10))
+                throttle = int(numpy.clip(speed, 5, max_speed - 5))
             else:
-                throttle = int(numpy.clip(speed, -max_speed - 0, -18))
+                # Adjust by -18 for long distances
+                throttle = int(numpy.clip(speed, -max_speed - 0, -9))
+            previous_error[1] = error
+        else:
+            previous_error[1] = 0
+
+    return [roll, throttle, pitch, previous_error]
+
+
+def roll_throttle_pitch_v3(roll, throttle, pitch, previous_error, max_speed=10):
+    """
+
+    :param roll:
+    :param throttle:
+    :param pitch:
+    :param previous_error:
+    :param max_speed:
+    :return:
+    """
+
+    # Method PID for speed
+    # Pitch (FORWARD - BACKWARD)
+    if pitch != 0:
+        error = pitch
+        speed = pid[0] * error + pid[1] * (error - previous_error[2])
+        if speed > 0:
+            pitch = int(numpy.clip(speed, 1, max_speed))
+        else:
+            pitch = int(numpy.clip(speed, -max_speed, -1))
+        previous_error[2] = error
+        roll = 0
+        throttle = 0
+        previous_error[0] = 0
+        previous_error[1] = 0
+    else:
+        previous_error[2] = 0
+        # Roll (LEFT - RIGHT)
+        if roll != 0:
+            error = roll
+            speed = pid[0] * error + pid[1] * (error - previous_error[0])
+            if speed > 0:
+                # 10
+                roll = int(numpy.clip(speed, 5, max_speed))
+            else:
+                # -10
+                roll = int(numpy.clip(speed, -max_speed, -5))
+            previous_error[0] = error
+        else:
+            previous_error[0] = 0
+
+        # Throttle (UP - DOWN)
+        if throttle != 0:
+            error = throttle
+            speed = pid2[0] * error + pid2[1] * (error - previous_error[1])
+            if speed > 0:
+                # Adjust by -10 for long distances
+                # throttle = int(numpy.clip(speed, -max_speed, max_speed - 10))
+                throttle = int(numpy.clip(speed, 5, max_speed - 5))
+            else:
+                # Adjust by -18 for long distances
+                throttle = int(numpy.clip(speed, -max_speed - 0, -9))
             previous_error[1] = error
         else:
             previous_error[1] = 0

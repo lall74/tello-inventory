@@ -59,7 +59,7 @@ def read(img, me=None, m=None, size=None, print=True, range_ids=None, output=Fal
     ppm = 420
     # Area to scan
     area_height = 1.20
-    area_width = 1.50
+    area_width = 1.20
     area_ratio = area_height / area_width
     # In cm
     center_width = 0.10

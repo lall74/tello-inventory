@@ -103,7 +103,7 @@ while cap.isOpened():
     # print(img.shape)
 
     # Processing frame
-    result, movements_from_image, img_resized, _ = fp.read(img, m=messages, size=size, print=True,
+    result, movements_from_image, img_resized, _ = fp.read(img, m=messages, size=size, print_text=True,
                                                            range_ids=markers_range, output=True)
     messages.clear()
     messages.append("Time on Target: " + str(timedelta(seconds=secs_on_target)))

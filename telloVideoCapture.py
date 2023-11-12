@@ -5,6 +5,7 @@ import time
 import cv2
 from datetime import datetime
 from datetime import timedelta
+from simple_pid import PID
 
 # Parameters
 # Step
@@ -14,17 +15,17 @@ step_secs = 0
 max_secs_take_off = 15
 max_secs_start_location = 10
 max_secs_focus = 25
-max_secs_take_picture = 4
-max_secs_find_directions = 4
-max_secs_next_location = 4
+max_secs_take_picture = 1
+max_secs_find_directions = 1
+max_secs_next_location = 10
 err_message = ""
 # Level
 level_marker = 0
 side_marker = 0
 min_level = 2
-max_level = 10
+max_level = 6
 # Speed
-speed = 25
+speed = 18
 direction = "UP"
 
 # ArUco Marker Constants
@@ -70,12 +71,25 @@ prefix = now.strftime("Video/%Y%m%d%H%M%S")
 prefix_output = now.strftime("Output/%Y%m%d%H%M%S")
 prefix_result = now.strftime("Result/%Y%m%d%H%M%S")
 
+# 1.428571 : 70% - 100%   (100/70)
+# 1.818181 : 55% - 100%   (100/55)
+offset_height = 1.428571
+
 img = None
 
 fourcc = cv2.VideoWriter_fourcc(*'XVID')
 out = cv2.VideoWriter(prefix + "_output.avi", fourcc, 20.0, size)
 out_processed = cv2.VideoWriter(prefix + "_output_processed.avi", fourcc, 20.0, size)
 out_log = open(prefix + "_log.txt", "w")
+
+
+# PID
+# LEFT - RIGHT
+pid_r = PID(1, 0.1, 0.05, setpoint=0, output_limits=(-10, 10))
+# UP - DOWN
+pid_t = PID(1, 0.1, 0.05, setpoint=0, output_limits=(-25, 5))
+# BACKWARD - FORWARD
+pid_p = PID(1, 0.1, 0.05, setpoint=0, output_limits=(-10, 10))
 
 
 def land():
@@ -117,6 +131,8 @@ def move(_me, _direction, _speed):
     :param _speed:
     :return:
     """
+    log(f"MOVE: {_direction}... @ {_speed}")
+
     if _direction == "FORWARD":
         _me.send_rc_control(0, _speed, 0, 0)
     elif _direction == "BACKWARD":
@@ -163,6 +179,10 @@ while True:
 
     f.put_text(img_resize, mode + ": " + direction_msg, 50, 740, 0.75, color=(0, 255, 0))
 
+    ax = me.get_speed_x()
+    ay = me.get_speed_y()
+    az = me.get_speed_z()
+
     # Take off
     if step == 'TAKE_OFF':
         if step_datetime_started == 0:
@@ -178,15 +198,16 @@ while True:
             step = 'ABORT'
         else:
             # Looking for markers
-            _, result_markers, result_img = fp.read_markers(img_resize, me, size=None,
-                                                            range_ids=markers_range)
+            _, result_markers, result_img = fp.read_markers(img_resize, me, size=None, range_ids=markers_range,
+                                                            offset_height=offset_height)
             img_resize = cv2.resize(result_img, size)
             f.put_text(img_resize, "TAKE OFF", 528, 50)
             if len(result_markers) > 0:
+                log("MARKERS FOUND...")
                 f.put_text(img_resize, "SUCCESS", 528, 80)
                 f.img_write(prefix + "_TAKE_OFF", result_img)
                 # Next step
-                # Stop throttleQ
+                # Stop throttle
                 move(me, "HOVER", 0)
                 step = 'FOCUS'
                 # Reset flags
@@ -221,6 +242,7 @@ while True:
             messages.append("FOCUS START...")
             step_datetime_started = time.time()
             global_previous_error = [0, 0, 0]
+            step_secs = 0
         elif step_datetime_started > 0:
             step_secs = round(time.time() - step_datetime_started)
         if step_secs > max_secs_focus:
@@ -234,10 +256,14 @@ while True:
                 NOT FOUND: No markers was found
                 ON TARGET: Found markers and is in position to take picture and it's ready to continue with the next position
             """
-            result, movements_from_image, img_resize, ids = fp.read(img_resize, me, m=messages, range_ids=markers_range)
+            result, movements_from_image, img_resize, ids = fp.read(img_resize, me, m=messages, range_ids=markers_range,
+                                                                    offset_height=offset_height)
             messages.clear()
+            messages.append(f"ACCELERATION: {ax} | {ay} | {az}")
             messages.append("Time on Target: " + str(timedelta(seconds=secs_on_target)))
             messages.append("Time Elapsed: " + str(timedelta(seconds=int(time.time() - time_started))))
+
+            f.put_text(img_resize, "FOCUS", 528, 740)
 
             if result == "SUCCESS" or result == "ON TARGET":
                 # Current level marker
@@ -258,9 +284,17 @@ while True:
                 secs_on_target = 0
                 # log(result)
                 # Regulate max speed
-                result = f.roll_throttle_pitch_v2(movements_from_image[0], movements_from_image[1],
+                # result = f.roll_throttle_pitch_v2(movements_from_image[0], movements_from_image[1],
+                #                                   movements_from_image[2],
+                #                                   global_previous_error, max_speed=10)
+                """
+                0: Roll
+                1: Throttle
+                2: Pitch
+                """
+                result = f.roll_throttle_pitch_v3(movements_from_image[0], movements_from_image[1],
                                                   movements_from_image[2],
-                                                  global_previous_error, max_speed=10)
+                                                  global_previous_error, pid_r, pid_t, pid_p)
                 # ToDo: Include YAW in parameters
                 global_previous_error = result[3]
 
@@ -340,21 +374,23 @@ while True:
                 # Reset flags
                 step_datetime_started = 0
                 step_secs = 0
-                me.send_rc_control(0, 0, 0, 0)
+                move(me, "HOVER", 0)
+                # me.send_rc_control(0, 0, 0, 0)
     # Taking picture
     elif step == 'TAKE_PICTURE':
-        me.send_rc_control(0, 0, 0, 0)
+        # me.send_rc_control(0, 0, 0, 0)
         if step_datetime_started == 0:
             log("TAKE PICTURE START...")
             messages.append("TAKE PICTURE START...")
             step_datetime_started = time.time()
             markers = False
-            move(me, "HOVER", 0)
+            # HOVER since FOCUS and ON TARGET event...
+            # move(me, "HOVER", 0)
         elif step_datetime_started > 0:
             step_secs = round(time.time() - step_datetime_started)
         # Finding number markers...
-        _, number_markers, numbers_img = fp.read_markers(img, size=None, _print=True,
-                                                         range_ids=numbers_range, offset_height=2)
+        _, number_markers, numbers_img = fp.read_markers(img, size=None, _print=True, range_ids=numbers_range,
+                                                         offset_height=2, offset_height_end=1.125)
         img_resize = cv2.resize(numbers_img, size)
         f.put_text(img_resize, "TAKE PICTURE", 528, 50)
         # If we get four markers
@@ -398,7 +434,7 @@ while True:
                 step_secs = 0
                 markers = False
     elif step == 'FIND_DIRECTIONS':
-        me.send_rc_control(0, 0, 0, 0)
+        # me.send_rc_control(0, 0, 0, 0)
         if step_datetime_started == 0:
             log("FIND DIRECTIONS START...")
             messages.append("FIND DIRECTIONS START...")
@@ -418,7 +454,8 @@ while True:
         else:
             # Finding change direction markers...
             _, direction_markers, directions_img = fp.read_markers(img, size=None, _print=True,
-                                                                   range_ids=directions_range)
+                                                                   range_ids=directions_range,
+                                                                   offset_height=offset_height)
             img_resize = cv2.resize(directions_img, size)
             f.put_text(img_resize, "FIND DIRECTIONS", 528, 50)
             # If we get one marker
@@ -441,17 +478,20 @@ while True:
                 else:
                     step = 'NEXT_LOCATION'
                     f.put_text(img_resize, "MOVE " + direction, 528, 80)
+                    move(me, direction, speed)
                 # Reset flags
                 step_datetime_started = 0
                 step_secs = 0
             else:
                 f.put_text(img_resize, "NOT FOUND", 528, 80)
     elif step == 'NEXT_LOCATION':
-        me.send_rc_control(0, 0, 0, 0)
+        # me.send_rc_control(0, 0, 0, 0)
         if step_datetime_started == 0:
             log("NEXT LOCATION START...")
             step_datetime_started = time.time()
-            move(me, direction, speed)
+            # Move to previous step...
+            # move(me, direction, speed)
+            step_secs = 0
         elif step_datetime_started > 0:
             step_secs = round(time.time() - step_datetime_started)
         if step_secs > max_secs_next_location:
@@ -476,13 +516,14 @@ while True:
                     next_location_range = range(odd_marker, odd_marker + 1)
                 else:
                     next_location_range = range(even_marker, even_marker + 1)
-            log(next_location_range)
+            # log(next_location_range)
             if next_location_range is None:
                 err_message = "Error finding next location - next_location_range"
                 step = "ABORT"
             else:
                 _, next_location_markers, next_location_img = fp.read_markers(img, size=None, _print=True,
-                                                                              range_ids=next_location_range)
+                                                                              range_ids=next_location_range,
+                                                                              offset_height=offset_height)
                 img_resize = cv2.resize(next_location_img, size)
                 f.put_text(img_resize, "NEXT LOCATION", 528, 50)
                 if len(next_location_markers) == 1:
@@ -514,7 +555,8 @@ while True:
             NOT FOUND: No markers was found
             ON TARGET: Found markers and is in position to take picture and it's ready to continue with the next position
         """
-        result, movements_from_image, img_resize, ids = fp.read(img_resize, me, m=messages, range_ids=markers_range)
+        result, movements_from_image, img_resize, ids = fp.read(img_resize, me, m=messages, range_ids=markers_range,
+                                                                offset_height=offset_height)
         messages.clear()
         messages.append("Time on Target: " + str(timedelta(seconds=secs_on_target)))
         messages.append("Time Elapsed: " + str(timedelta(seconds=int(time.time() - time_started))))
@@ -525,9 +567,18 @@ while True:
             time_on_target = 0
             secs_on_target = 0
             # log(result)
-            result = f.roll_throttle_pitch_v2(movements_from_image[0], movements_from_image[1],
+            # result = f.roll_throttle_pitch_v2(movements_from_image[0], movements_from_image[1],
+            #                                   movements_from_image[2],
+            #                                   global_previous_error)
+            """
+            0: Roll
+            1: Throttle
+            2: Pitch
+            """
+            result = f.roll_throttle_pitch_v3(movements_from_image[0], movements_from_image[1],
                                               movements_from_image[2],
-                                              global_previous_error)
+                                              global_previous_error, pid_r, pid_t, pid_p)
+
             # ToDo: Include YAW in parameters
             global_previous_error = result[3]
 

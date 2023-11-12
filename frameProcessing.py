@@ -39,16 +39,17 @@ def get_angle_between_two_points(point1, point2):
     return angle
 
 
-def read(img, me=None, m=None, size=None, print=True, range_ids=None, output=False):
+def read(img, me=None, m=None, size=None, print_text=True, range_ids=None, output=False, offset_height=1.4286):
     """
 
     :param img:
     :param me:
     :param m:
     :param size:
-    :param print:
+    :param print_text:
     :param range_ids:
     :param output:
+    :param offset_height:
     :return:
     """
     # Datetime
@@ -62,7 +63,7 @@ def read(img, me=None, m=None, size=None, print=True, range_ids=None, output=Fal
     area_width = 1.20
     area_ratio = area_height / area_width
     # In cm
-    center_width = 0.10
+    center_width = 0.15
 
     # Resizing image
     if size is not None:
@@ -70,8 +71,9 @@ def read(img, me=None, m=None, size=None, print=True, range_ids=None, output=Fal
     else:
         img_resize = img
 
-    # 75% - 100%
-    half = round(img_resize.shape[0] // 1.33333)
+    # 75% - 100% : 1.333333
+    # 55% - 100% : 1.818181
+    half = round(img_resize.shape[0] // offset_height)
     # Middle point of image
     middle = img_resize.shape[1] // 2
     # Width of image
@@ -118,15 +120,15 @@ def read(img, me=None, m=None, size=None, print=True, range_ids=None, output=Fal
             delta_area = 0
         # print(p1, " - ", p2)
         angle = get_angle_between_two_points(p1, p2)
-        if print:
+        if print_text:
             f.put_text(img_resize, "Angle: " + str(round(angle, 2)) + " degrees", 600, 140)
         if delta_area != 0:
-            if print:
+            if print_text:
                 f.put_text(img_resize, "Delta Area: " + str(round(delta_area, 2)) + "%", 600, 170)
         distance = f.distance_in_meters(math.dist(p1, p2), ppm)
         # Delta yaw
         delta_d = int((distance - area_width) * 100)
-        if print:
+        if print_text:
             f.put_text(img_resize, "Delta D: " + str(delta_d) + " cms", 600, 110)
         # ppm from image
         ppmi = distance / area_width * ppm
@@ -138,11 +140,11 @@ def read(img, me=None, m=None, size=None, print=True, range_ids=None, output=Fal
         delta_x, delta_y = f.draw_rectangle(img_resize, p1, p2, distance, (c_x, c_y), width_center)
         delta_x, delta_y = int(f.distance_in_meters(delta_x, ppmi / 100)), int(
             f.distance_in_meters(delta_y, ppmi / 100))
-        if print:
+        if print_text:
             f.put_text(img_resize, "Delta X: " + str(int(delta_x)) + " cms", 600, 50)
             f.put_text(img_resize, "Delta Y: " + str(int(delta_y)) + " cms", 600, 80)
         # def movements(delta, delta_width, width_center, image):
-        movements = f.movements((delta_x, delta_y), delta_d, center_width * 100, img_resize, print=print)
+        movements = f.movements((delta_x, delta_y), delta_d, center_width * 100, img_resize, print_text=print_text)
         # movements = [delta_x, delta_y, delta_d]
         send_message("Roll - Throttle - Pitch - Yaw: " + str(movements), messages)
         # If is in target
@@ -158,7 +160,7 @@ def read(img, me=None, m=None, size=None, print=True, range_ids=None, output=Fal
     for message in m:
         send_message(message, messages)
 
-    if print:
+    if print_text:
         print_messages(img_resize, messages)
     if output:
         cv2.imshow("Output", img_resize)
@@ -169,7 +171,8 @@ def read(img, me=None, m=None, size=None, print=True, range_ids=None, output=Fal
     return result, movements, img_resize, ids
 
 
-def read_markers(img, me=None, m=None, size=None, _print=True, range_ids=None, offset_height=1.4286):
+def read_markers(img, me=None, m=None, size=None, _print=True, range_ids=None, offset_height=1.4286,
+                 offset_height_end=1):
     """
 
     :param img:
@@ -179,6 +182,7 @@ def read_markers(img, me=None, m=None, size=None, _print=True, range_ids=None, o
     :param _print:
     :param range_ids:
     :param offset_height:
+    :param offset_height_end:
     :return:
     """
     # Datetime
@@ -196,7 +200,7 @@ def read_markers(img, me=None, m=None, size=None, _print=True, range_ids=None, o
     # Width of image
     w = img_resize.shape[1]
     # Height of image
-    h = img_resize.shape[0]
+    h = round(img_resize.shape[0] // offset_height_end)
 
     img_markers = img_resize[half:h, 0:w]
 

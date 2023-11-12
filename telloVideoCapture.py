@@ -10,6 +10,7 @@ from simple_pid import PID
 # Parameters
 # Step
 step = "IDLE"
+step_go = "IDLE"
 step_datetime_started = 0
 step_secs = 0
 max_secs_take_off = 15
@@ -168,12 +169,11 @@ while True:
         img = me.get_frame_read().frame
         try:
             img_resize = cv2.resize(img, size)
+            # Recording original video resized
+            out.write(img_resize)
         except BaseException as err:
             log(f"Unexpected {err=}, {type(err)=}")
             log(img.shape() + " - " + str(size))
-
-    # Recording original video resized
-    out.write(img_resize)
 
     time.sleep(1 / 10)
 
@@ -236,7 +236,7 @@ while True:
                 step_datetime_started = 0
                 step_secs = 0
             # else: Move forward - backward - left or right as needed
-    elif step == 'FOCUS':
+    elif step == 'FOCUS' or step == "FOCUS_AND_GO":
         if step_datetime_started == 0:
             log("FOCUS START...")
             messages.append("FOCUS START...")
@@ -370,11 +370,18 @@ while True:
                 # Taking picture
                 log("On target")
                 messages.append("ON TARGET")
-                step = 'TAKE_PICTURE'
+                if step == "FOCUS_AND_GO":
+                    step = step_go
+                    if step == 'NEXT_LOCATION':
+                        move(me, direction, speed)
+                    else:
+                        move(me, "HOVER", 0)
+                else:
+                    step = 'TAKE_PICTURE'
+                    move(me, "HOVER", 0)
                 # Reset flags
                 step_datetime_started = 0
                 step_secs = 0
-                move(me, "HOVER", 0)
                 # me.send_rc_control(0, 0, 0, 0)
     # Taking picture
     elif step == 'TAKE_PICTURE':
@@ -397,7 +404,8 @@ while True:
         if len(number_markers) == 4:
             f.put_text(img_resize, "SUCCESS", 528, 80)
             f.img_write(prefix_result + "_INFO", numbers_img)
-            step = 'FIND_DIRECTIONS'
+            step = 'FOCUS_AND_GO'
+            step_go = 'FIND_DIRECTIONS'
             # Reset flags
             step_datetime_started = 0
             step_secs = 0
@@ -428,7 +436,8 @@ while True:
                     f.put_text(img_resize, "LOCATION EMPTY", 528, 110)
                 # Stop looking for number markers...
                 f.img_write(prefix_result + suffix, numbers_img)
-                step = 'FIND_DIRECTIONS'
+                step = 'FOCUS_AND_GO'
+                step_go = 'FIND_DIRECTIONS'
                 # Reset flags
                 step_datetime_started = 0
                 step_secs = 0
@@ -445,9 +454,10 @@ while True:
             f.put_text(img_resize, "CONTINUE", 528, 80)
             err_message = "Max time to find directions reached! Continue"
             log(err_message)
-            step = 'NEXT_LOCATION'
+            step = 'FOCUS_AND_GO'
+            step_go = 'NEXT_LOCATION'
             # Start movement with the same direction...
-            move(me, direction, speed)
+            # move(me, direction, speed) @FOCUS_AND_GO
             # Reset flags
             step_datetime_started = 0
             step_secs = 0
@@ -476,9 +486,10 @@ while True:
                     step = 'END'
                     direction = "HOVER"
                 else:
-                    step = 'NEXT_LOCATION'
+                    step = 'FOCUS_AND_GO'
+                    step_go = 'NEXT_LOCATION'
                     f.put_text(img_resize, "MOVE " + direction, 528, 80)
-                    move(me, direction, speed)
+                    # move(me, direction, speed)
                 # Reset flags
                 step_datetime_started = 0
                 step_secs = 0
@@ -667,28 +678,32 @@ while True:
         if k != last_manual_command:
             if k == 2490368:
                 # Up Arrow
-                me.send_rc_control(0, speed, 0, 0)
+                # me.send_rc_control(0, speed, 0, 0)
+                me.move_forward(20)
                 log("Forward")
                 direction_msg = "FORWARD"
                 messages.append(direction_msg)
                 last_manual_command = k
             elif k == 2621440:
                 # Down Arrow
-                me.send_rc_control(0, -speed, 0, 0)
+                # me.send_rc_control(0, -speed, 0, 0)
+                me.move_back(20)
                 log("Backward")
                 direction_msg = "BACKWARD"
                 messages.append(direction_msg)
                 last_manual_command = k
             elif k == 2424832:
                 # Left Arrow
-                me.send_rc_control(-speed, 0, 0, 0)
+                # me.send_rc_control(-speed, 0, 0, 0)
+                me.move_left(20)
                 log("Left")
                 direction_msg = "LEFT"
                 messages.append(direction_msg)
                 last_manual_command = k
             elif k == 2555904:
                 # Right Arrow
-                me.send_rc_control(speed, 0, 0, 0)
+                # me.send_rc_control(speed, 0, 0, 0)
+                me.move_right(20)
                 log("Right")
                 direction_msg = "RIGHT"
                 messages.append(direction_msg)

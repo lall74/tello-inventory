@@ -59,7 +59,7 @@ def read(img, me=None, m=None, size=None, print_text=True, range_ids=None, outpu
     # Pixels per meter
     ppm = 420
     # Area to scan
-    area_height = 1.20
+    area_height = 1.00
     area_width = 1.20
     area_ratio = area_height / area_width
     # In cm

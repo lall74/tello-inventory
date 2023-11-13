@@ -39,7 +39,8 @@ def get_angle_between_two_points(point1, point2):
     return angle
 
 
-def read(img, me=None, m=None, size=None, print_text=True, range_ids=None, output=False, offset_height=1.4286):
+def read(img, me=None, m=None, size=None, print_text=True, range_ids=None, output=False, offset_height=1.4286,
+         offset_width=0):
     """
 
     :param img:
@@ -50,6 +51,7 @@ def read(img, me=None, m=None, size=None, print_text=True, range_ids=None, outpu
     :param range_ids:
     :param output:
     :param offset_height:
+    :param offset_width:
     :return:
     """
     # Datetime
@@ -59,7 +61,7 @@ def read(img, me=None, m=None, size=None, print_text=True, range_ids=None, outpu
     # Pixels per meter
     ppm = 420
     # Area to scan
-    area_height = 1.00
+    area_height = 1.05
     area_width = 1.20
     area_ratio = area_height / area_width
     # In cm
@@ -78,14 +80,16 @@ def read(img, me=None, m=None, size=None, print_text=True, range_ids=None, outpu
     middle = img_resize.shape[1] // 2
     # Width of image
     w = img_resize.shape[1]
+    padding_width = round(w * offset_width)
     # Height of image
     h = img_resize.shape[0]
     # Left side of image
-    img_left = img_resize[half:h, 0:middle]
+    img_left = img_resize[half:h, 0 + padding_width:middle]
     # Right side of image
-    img_right = img_resize[half:h, middle:w]
+    img_right = img_resize[half:h, middle:w - padding_width]
 
-    f.draw_binding_box(img_resize, (0, half), (0, h), (w, half), (w, h))
+    f.draw_binding_box(img_resize, (0 + padding_width, half), (0 + padding_width, h), (w - padding_width, half),
+                       (w - padding_width, h))
 
     c_x = int(w // 2)
     c_y = int(h // 2)
@@ -95,7 +99,7 @@ def read(img, me=None, m=None, size=None, print_text=True, range_ids=None, outpu
     # Aruco params
     aruco_params = cv2.aruco.DetectorParameters_create()
     # Reading aruco markers detected on the left side
-    l_markers = f.draw_markers(img_left, img_resize, aruco_dict, aruco_params, 0, range_ids, half)
+    l_markers = f.draw_markers(img_left, img_resize, aruco_dict, aruco_params, 0 + padding_width, range_ids, half)
     # Reading aruco markers detected on the right side
     r_markers = f.draw_markers(img_right, img_resize, aruco_dict, aruco_params, middle, range_ids, half)
 
@@ -172,7 +176,7 @@ def read(img, me=None, m=None, size=None, print_text=True, range_ids=None, outpu
 
 
 def read_markers(img, me=None, m=None, size=None, _print=True, range_ids=None, offset_height=1.4286,
-                 offset_height_end=1):
+                 offset_height_end=1, offset_width=0):
     """
 
     :param img:
@@ -183,6 +187,7 @@ def read_markers(img, me=None, m=None, size=None, _print=True, range_ids=None, o
     :param range_ids:
     :param offset_height:
     :param offset_height_end:
+    :param offset_width: % of width (0 - 0.99)
     :return:
     """
     # Datetime
@@ -199,19 +204,22 @@ def read_markers(img, me=None, m=None, size=None, _print=True, range_ids=None, o
     half = round(img_resize.shape[0] // offset_height)
     # Width of image
     w = img_resize.shape[1]
+    padding_width = round(w * offset_width)
     # Height of image
     h = round(img_resize.shape[0] // offset_height_end)
 
-    img_markers = img_resize[half:h, 0:w]
+    # Portion of original image to scan for ArUco markers
+    img_markers = img_resize[half:h, (0 + padding_width):w]
 
-    f.draw_binding_box(img_resize, (0, half), (0, h), (w, half), (w, h))
+    f.draw_binding_box(img_resize, (0 + padding_width, half), (0 + padding_width, h), (w - padding_width, half),
+                       (w - padding_width, h))
 
     # Aruco dictionary 4x4_50
     aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_250)
     # Aruco params
     aruco_params = cv2.aruco.DetectorParameters_create()
     # Reading aruco markers detected
-    all_markers = f.draw_markers(img_markers, img_resize, aruco_dict, aruco_params, 0, range_ids, half)
+    all_markers = f.draw_markers(img_markers, img_resize, aruco_dict, aruco_params, 0 + padding_width, range_ids, half)
 
     if me is not None:
         send_message("Battery Level: " + str(me.get_battery()) + "%", messages)

@@ -16,9 +16,9 @@ step_secs = 0
 max_secs_take_off = 15
 max_secs_start_location = 10
 max_secs_focus = 25
-max_secs_take_picture = 1
-max_secs_find_directions = 1
-max_secs_next_location = 10
+max_secs_take_picture = 2
+max_secs_find_directions = 2
+max_secs_next_location = 25
 err_message = ""
 # Level
 level_marker = 0
@@ -75,6 +75,8 @@ prefix_result = now.strftime("Result/%Y%m%d%H%M%S")
 # 1.428571 : 70% - 100%   (100/70)
 # 1.818181 : 55% - 100%   (100/55)
 offset_height = 1.428571
+
+offset_width = 0.10
 
 img = None
 
@@ -139,9 +141,9 @@ def move(_me, _direction, _speed):
     elif _direction == "BACKWARD":
         _me.send_rc_control(0, -_speed, 0, 0)
     elif _direction == "LEFT":
-        _me.send_rc_control(-_speed, 0, 0, 0)
+        _me.send_rc_control(-10, 0, 0, 0)
     elif _direction == "RIGHT":
-        _me.send_rc_control(_speed, 0, 0, 0)
+        _me.send_rc_control(10, 0, 0, 0)
     elif _direction == "UP":
         _me.send_rc_control(0, 0, _speed, 0)
     elif _direction == "DOWN":
@@ -150,6 +152,38 @@ def move(_me, _direction, _speed):
         _me.send_rc_control(0, 0, 0, _speed)
     elif _direction == "COUNTERCLOCKWISE":
         _me.send_rc_control(0, 0, 0, -_speed)
+    elif _direction == "HOVER":
+        _me.send_rc_control(0, 0, 0, 0)
+
+
+def move_distance(_me, _direction, _distance):
+    """
+
+    :param _me:
+    :param _direction:
+    :param _distance:
+    :return:
+    """
+    log(f"MOVE DISTANCE: {_direction}... @ {_distance}")
+
+    if _direction == "FORWARD":
+        _me.move_forward(_distance)
+    elif _direction == "BACKWARD":
+        _me.move_back(_distance)
+    elif _direction == "LEFT":
+        _me.move_left(_distance)
+        # _me.send_rc_control(-5, 0, 0, 0)
+    elif _direction == "RIGHT":
+        _me.move_right(_distance)
+        # _me.send_rc_control(5, 0, 0, 0)
+    elif _direction == "UP":
+        _me.move_up(_distance)
+    elif _direction == "DOWN":
+        _me.move_down(_distance)
+    elif _direction == "CLOCKWISE":
+        _me.rotate_clockwise(_distance)
+    elif _direction == "COUNTERCLOCKWISE":
+        _me.rotate_counter_clockwise(_distance)
     elif _direction == "HOVER":
         _me.send_rc_control(0, 0, 0, 0)
 
@@ -190,7 +224,9 @@ while True:
             messages.append("TAKE OFF START...")
             step_datetime_started = time.time()
             direction = "UP"
-            move(me, direction, speed)
+            # move(me, direction, speed)
+            move_distance(me, direction, 20)
+            # time.sleep(1 / 10)
         elif step_datetime_started > 0:
             step_secs = round(time.time() - step_datetime_started)
         if step_secs > max_secs_take_off:
@@ -199,7 +235,7 @@ while True:
         else:
             # Looking for markers
             _, result_markers, result_img = fp.read_markers(img_resize, me, size=None, range_ids=markers_range,
-                                                            offset_height=offset_height)
+                                                            offset_height=offset_height, offset_width=offset_width)
             img_resize = cv2.resize(result_img, size)
             f.put_text(img_resize, "TAKE OFF", 528, 50)
             if len(result_markers) > 0:
@@ -215,6 +251,8 @@ while True:
                 step_secs = 0
             else:
                 f.put_text(img_resize, "NOT FOUND", 528, 80)
+                # move_distance(me, direction, 20)
+                # time.sleep(1 / 10)
     elif step == 'START_LOCATION':
         if step_datetime_started == 0:
             log("START LOCATION START...")
@@ -257,7 +295,8 @@ while True:
                 ON TARGET: Found markers and is in position to take picture and it's ready to continue with the next position
             """
             result, movements_from_image, img_resize, ids = fp.read(img_resize, me, m=messages, range_ids=markers_range,
-                                                                    offset_height=offset_height)
+                                                                    offset_height=offset_height,
+                                                                    offset_width=offset_width)
             messages.clear()
             messages.append(f"ACCELERATION: {ax} | {ay} | {az}")
             messages.append("Time on Target: " + str(timedelta(seconds=secs_on_target)))
@@ -318,7 +357,9 @@ while True:
                         3: up_down_velocity (Throttle)
                         4: yaw_velocity (Yaw)
                         """
-                        me.send_rc_control(result[0], -result[2], -result[1], 0)
+                        # Changed for move_distance
+                        # me.send_rc_control(result[0], -result[2], -result[1], 0)
+
                         message = ""
                         """
                         Roll
@@ -329,8 +370,10 @@ while True:
                         """
                         if result[0] > 0:
                             message += " RIGHT: " + str(result[0])
+                            move_distance(me, "RIGHT", 20)
                         elif result[0] < 0:
                             message += " LEFT: " + str(result[0])
+                            move_distance(me, "LEFT", 20)
                         else:
                             message += " HOVER "
                         """
@@ -342,8 +385,10 @@ while True:
                         """
                         if result[1] > 0:
                             message += " DOWN: " + str(-result[1])
+                            move_distance(me, "DOWN", 20)
                         elif result[1] < 0:
                             message += " UP: " + str(-result[1])
+                            move_distance(me, "UP", 20)
                         else:
                             message += " HOVER "
                         """
@@ -355,8 +400,10 @@ while True:
                         """
                         if result[2] > 0:
                             message += " BACKWARD: " + str(-result[2])
+                            move_distance(me, "BACKWARD", 20)
                         elif result[2] < 0:
                             message += " FORWARD: " + str(-result[2])
+                            move_distance(me, "FORWARD", 20)
                         else:
                             message += " HOVER "
                         direction_msg = message
@@ -374,6 +421,8 @@ while True:
                     step = step_go
                     if step == 'NEXT_LOCATION':
                         move(me, direction, speed)
+                        # move_distance(me, direction, 20)
+                        # time.sleep(1 / 10)
                     else:
                         move(me, "HOVER", 0)
                 else:
@@ -397,7 +446,8 @@ while True:
             step_secs = round(time.time() - step_datetime_started)
         # Finding number markers...
         _, number_markers, numbers_img = fp.read_markers(img, size=None, _print=True, range_ids=numbers_range,
-                                                         offset_height=2, offset_height_end=1.125)
+                                                         offset_height=2, offset_height_end=1.176470,
+                                                         offset_width=offset_width)
         img_resize = cv2.resize(numbers_img, size)
         f.put_text(img_resize, "TAKE PICTURE", 528, 50)
         # If we get four markers
@@ -465,7 +515,9 @@ while True:
             # Finding change direction markers...
             _, direction_markers, directions_img = fp.read_markers(img, size=None, _print=True,
                                                                    range_ids=directions_range,
-                                                                   offset_height=offset_height)
+                                                                   offset_height=offset_height,
+                                                                   offset_height_end=1.111111,
+                                                                   offset_width=0.20)
             img_resize = cv2.resize(directions_img, size)
             f.put_text(img_resize, "FIND DIRECTIONS", 528, 50)
             # If we get one marker
@@ -534,7 +586,8 @@ while True:
             else:
                 _, next_location_markers, next_location_img = fp.read_markers(img, size=None, _print=True,
                                                                               range_ids=next_location_range,
-                                                                              offset_height=offset_height)
+                                                                              offset_height=offset_height,
+                                                                              offset_width=offset_width)
                 img_resize = cv2.resize(next_location_img, size)
                 f.put_text(img_resize, "NEXT LOCATION", 528, 50)
                 if len(next_location_markers) == 1:
@@ -548,6 +601,7 @@ while True:
                     move(me, "HOVER", 0)
                 else:
                     f.put_text(img_resize, "NOT FOUND", 528, 80)
+                    # move_distance(me, direction, 20)
     elif step == 'ABORT':
         log("ABORT")
         log(err_message)
@@ -567,7 +621,7 @@ while True:
             ON TARGET: Found markers and is in position to take picture and it's ready to continue with the next position
         """
         result, movements_from_image, img_resize, ids = fp.read(img_resize, me, m=messages, range_ids=markers_range,
-                                                                offset_height=offset_height)
+                                                                offset_height=offset_height, offset_width=offset_width)
         messages.clear()
         messages.append("Time on Target: " + str(timedelta(seconds=secs_on_target)))
         messages.append("Time Elapsed: " + str(timedelta(seconds=int(time.time() - time_started))))
@@ -710,28 +764,32 @@ while True:
                 last_manual_command = k
             elif k == ord('w') or k == ord('W'):
                 # Key K
-                me.send_rc_control(0, 0, speed, 0)
+                # me.send_rc_control(0, 0, speed, 0)
+                me.move_up(20)
                 log("Up")
                 direction_msg = "UP"
                 messages.append(direction_msg)
                 last_manual_command = k
             elif k == ord('s') or k == ord('S'):
                 # Key S
-                me.send_rc_control(0, 0, -speed, 0)
+                # me.send_rc_control(0, 0, -speed, 0)
+                me.move_down(20)
                 log("Down")
                 direction_msg = "DOWN"
                 messages.append(direction_msg)
                 last_manual_command = k
             elif k == ord('a') or k == ord('A'):
                 # Key A
-                me.send_rc_control(0, 0, 0, speed)
+                # me.send_rc_control(0, 0, 0, speed)
+                me.rotate_clockwise(15)
                 log("Turn clockwise")
                 direction_msg = "TURN CLOCKWISE"
                 messages.append(direction_msg)
                 last_manual_command = k
             elif k == ord('d') or k == ord('D'):
                 # Key D
-                me.send_rc_control(0, 0, 0, -speed)
+                # me.send_rc_control(0, 0, 0, -speed)
+                me.rotate_counter_clockwise(15)
                 log("Turn counterclockwise")
                 direction_msg = "TURN COUNTERCLOCKWISE"
                 messages.append(direction_msg)

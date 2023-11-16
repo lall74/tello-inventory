@@ -40,7 +40,7 @@ def get_angle_between_two_points(point1, point2):
 
 
 def read(img, me=None, m=None, size=None, print_text=True, range_ids=None, output=False, offset_height=1.4286,
-         offset_width=0):
+         offset_height_end=1, offset_width=0):
     """
 
     :param img:
@@ -51,6 +51,7 @@ def read(img, me=None, m=None, size=None, print_text=True, range_ids=None, outpu
     :param range_ids:
     :param output:
     :param offset_height:
+    :param offset_height_end:
     :param offset_width:
     :return:
     """
@@ -82,7 +83,8 @@ def read(img, me=None, m=None, size=None, print_text=True, range_ids=None, outpu
     w = img_resize.shape[1]
     padding_width = round(w * offset_width)
     # Height of image
-    h = img_resize.shape[0]
+    # h = img_resize.shape[0]
+    h = round(img_resize.shape[0] // offset_height_end)
     # Left side of image
     img_left = img_resize[half:h, 0 + padding_width:middle]
     # Right side of image
@@ -209,7 +211,7 @@ def read_markers(img, me=None, m=None, size=None, _print=True, range_ids=None, o
     h = round(img_resize.shape[0] // offset_height_end)
 
     # Portion of original image to scan for ArUco markers
-    img_markers = img_resize[half:h, (0 + padding_width):w]
+    img_markers = img_resize[half:h, (0 + padding_width):w - padding_width]
 
     f.draw_binding_box(img_resize, (0 + padding_width, half), (0 + padding_width, h), (w - padding_width, half),
                        (w - padding_width, h))

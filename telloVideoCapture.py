@@ -13,6 +13,7 @@ step = "IDLE"
 step_go = "IDLE"
 step_datetime_started = 0
 step_secs = 0
+
 max_secs_take_off = 15
 max_secs_start_location = 10
 max_secs_focus = 25
@@ -224,8 +225,8 @@ while True:
             messages.append("TAKE OFF START...")
             step_datetime_started = time.time()
             direction = "UP"
-            # move(me, direction, speed)
-            move_distance(me, direction, 20)
+            move(me, direction, speed)
+            # move_distance(me, direction, 20)
             # time.sleep(1 / 10)
         elif step_datetime_started > 0:
             step_secs = round(time.time() - step_datetime_started)
@@ -296,6 +297,7 @@ while True:
             """
             result, movements_from_image, img_resize, ids = fp.read(img_resize, me, m=messages, range_ids=markers_range,
                                                                     offset_height=offset_height,
+                                                                    offset_height_end=1.111111,
                                                                     offset_width=offset_width)
             messages.clear()
             messages.append(f"ACCELERATION: {ax} | {ay} | {az}")
@@ -587,6 +589,7 @@ while True:
                 _, next_location_markers, next_location_img = fp.read_markers(img, size=None, _print=True,
                                                                               range_ids=next_location_range,
                                                                               offset_height=offset_height,
+                                                                              offset_height_end=1.111111,
                                                                               offset_width=offset_width)
                 img_resize = cv2.resize(next_location_img, size)
                 f.put_text(img_resize, "NEXT LOCATION", 528, 50)

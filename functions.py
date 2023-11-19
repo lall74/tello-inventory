@@ -4,6 +4,7 @@ import functools
 from datetime import datetime
 from simple_pid import PID
 
+# Constants v1 & v2
 pid = [0.4, 0.4, 0]
 pid2 = [0.4, 0.4, 0]
 

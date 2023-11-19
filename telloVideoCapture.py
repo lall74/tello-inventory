@@ -2,41 +2,73 @@ from djitellopy import tello
 import frameProcessing as fp
 import functions as f
 import time
+import configparser
 import cv2
 from datetime import datetime
 from datetime import timedelta
 from simple_pid import PID
+import csv
 
 # Parameters
+config = configparser.ConfigParser()
+config.read('config.ini')
+general = config['GENERAL']
+max_secs = config['MAX_SECS']
+aruco_markers = config['ARUCO_MARKERS']
+offset = config['OFFSET']
+
 # Step
 step = "IDLE"
 step_go = "IDLE"
 step_datetime_started = 0
 step_secs = 0
-
-max_secs_take_off = 15
-max_secs_start_location = 10
-max_secs_focus = 25
-max_secs_take_picture = 2
-max_secs_find_directions = 2
-max_secs_next_location = 25
-err_message = ""
-# Level
 level_marker = 0
 side_marker = 0
-min_level = 2
-max_level = 6
-# Speed
-speed = 18
+err_message = ""
+size = (1024, 768)
+
+speed = general['Speed']
 direction = "UP"
+min_level = general['MinLevel']
+max_level = general['MaxLevel']
+
+max_secs_take_off = max_secs['TakeOff']
+max_secs_focus = max_secs['Focus']
+max_secs_take_picture = max_secs['TakePicture']
+max_secs_find_directions = max_secs['FindDirections']
+max_secs_next_location = max_secs['NextLocation']
 
 # ArUco Marker Constants
-odd_marker = 0
-even_marker = 1
-markers_range = range(0, 11)
-level_markers_range = range(2, 11)
-directions_range = range(11, 16)
-numbers_range = range(100, 228)
+odd_marker = aruco_markers['OddMarker']
+even_marker = aruco_markers['EvenMarker']
+markers_range = range(int(aruco_markers['MarkersRangeBegin']), int(aruco_markers['MarkersRangeEnd']))
+level_markers_range = range(int(aruco_markers['LevelMarkersRangeBegin']), int(aruco_markers['LevelMarkersRangeBegin']))
+directions_range = range(int(aruco_markers['DirectionsRangeBegin']), int(aruco_markers['DirectionsRangeBegin']))
+numbers_range = range(int(aruco_markers['NumbersRangeBegin']), int(aruco_markers['NumbersRangeBegin']))
+
+# 1.428571 : 70% - 100%   (100/70)
+# 1.818181 : 55% - 100%   (100/55)
+offset_height = offset['Height']
+offset_width = offset['Width']
+offset_height_end_focus = offset['HeightEndFocus']
+offset_height_take_picture = offset['HeightTakePicture']
+offset_height_end_take_picture = offset['HeightEndTakePicture']
+offset_height_end_find_directions = offset['HeightEndFindDirections']
+offset_width_find_directions = offset['WidthFindDirections']
+offset_height_end_next_location = offset['HeightEndNextLocation']
+
+# PID
+# LEFT - RIGHT
+pid_r = PID(1, 0.1, 0.05, setpoint=0, output_limits=(-10, 10))
+# UP - DOWN
+pid_t = PID(1, 0.1, 0.05, setpoint=0, output_limits=(-25, 5))
+# BACKWARD - FORWARD
+pid_p = PID(1, 0.1, 0.05, setpoint=0, output_limits=(-10, 10))
+
+fp.ppm = 420
+fp.area_height = 1.05
+fp.area_width = 1.20
+fp.center_width = 0.15
 
 # Taking picture
 # PARAM
@@ -44,7 +76,6 @@ numbers_range = range(100, 228)
 markers = False
 
 global_previous_error = [0, 0, 0]
-size = (1024, 768)
 # size = (2592, 1936)
 
 messages = []
@@ -63,37 +94,29 @@ time_on_target = 0
 # Amount of seconds continuously on target
 secs_on_target = 0
 
-me = tello.Tello()
-me.connect()
-me.streamon()
-
 now = datetime.now()
 # Save on Video directory
 prefix = now.strftime("Video/%Y%m%d%H%M%S")
 prefix_output = now.strftime("Output/%Y%m%d%H%M%S")
 prefix_result = now.strftime("Result/%Y%m%d%H%M%S")
 
-# 1.428571 : 70% - 100%   (100/70)
-# 1.818181 : 55% - 100%   (100/55)
-offset_height = 1.428571
-
-offset_width = 0.10
-
 img = None
 
 fourcc = cv2.VideoWriter_fourcc(*'XVID')
 out = cv2.VideoWriter(prefix + "_output.avi", fourcc, 20.0, size)
 out_processed = cv2.VideoWriter(prefix + "_output_processed.avi", fourcc, 20.0, size)
+out_csv = open(prefix_result + "_output_processed.csv", 'w')
+csv_writer = csv.writer(out_csv)
+csv_header = ['rack', 'columna', 'lado', 'nivel', 'identificador']
 out_log = open(prefix + "_log.txt", "w")
 
+csv_writer.writerow(csv_header)
 
-# PID
-# LEFT - RIGHT
-pid_r = PID(1, 0.1, 0.05, setpoint=0, output_limits=(-10, 10))
-# UP - DOWN
-pid_t = PID(1, 0.1, 0.05, setpoint=0, output_limits=(-25, 5))
-# BACKWARD - FORWARD
-pid_p = PID(1, 0.1, 0.05, setpoint=0, output_limits=(-10, 10))
+print(speed, direction, min_level, max_level)
+
+me = tello.Tello()
+me.connect()
+me.streamon()
 
 
 def land():
@@ -108,14 +131,12 @@ def end_flight():
     land()
     log("Stream off")
     messages.append("Stream OFF")
-    # me.streamoff()
     # Set five seconds to exit loop and close windows
     time_end = time.time() + 5
 
 
 def log(m):
     """
-
     :param m:
     :return:
     """
@@ -191,6 +212,9 @@ def move_distance(_me, _direction, _distance):
 
 log("Battery Level: " + str(me.get_battery()) + "%")
 
+rack = int(input('Enter rack number: '))
+column = int(input('Enter column number: '))
+
 while True:
 
     if time_end > 0:
@@ -213,10 +237,6 @@ while True:
     time.sleep(1 / 10)
 
     f.put_text(img_resize, mode + ": " + direction_msg, 50, 740, 0.75, color=(0, 255, 0))
-
-    ax = me.get_speed_x()
-    ay = me.get_speed_y()
-    az = me.get_speed_z()
 
     # Take off
     if step == 'TAKE_OFF':
@@ -254,27 +274,6 @@ while True:
                 f.put_text(img_resize, "NOT FOUND", 528, 80)
                 # move_distance(me, direction, 20)
                 # time.sleep(1 / 10)
-    elif step == 'START_LOCATION':
-        if step_datetime_started == 0:
-            log("START LOCATION START...")
-            step_datetime_started = time.time()
-        elif step_datetime_started > 0:
-            step_secs = round(time.time() - step_datetime_started)
-        if step_secs > max_secs_start_location:
-            err_message = "Max time to find start location markers reached! Error"
-            step = 'ABORT'
-        else:
-            # Looking for markers
-            result, _, result_img, _ = fp.read(img_resize, me, range_ids=markers_range)
-            img_resize = cv2.resize(result_img, size)
-            f.put_text(img_resize, "START LOCATION", 528, 50)
-            if result == "SUCCESS":
-                f.img_write(prefix + "_START_LOCATION", result_img)
-                step = 'FOCUS'
-                # Reset flags
-                step_datetime_started = 0
-                step_secs = 0
-            # else: Move forward - backward - left or right as needed
     elif step == 'FOCUS' or step == "FOCUS_AND_GO":
         if step_datetime_started == 0:
             log("FOCUS START...")
@@ -297,10 +296,9 @@ while True:
             """
             result, movements_from_image, img_resize, ids = fp.read(img_resize, me, m=messages, range_ids=markers_range,
                                                                     offset_height=offset_height,
-                                                                    offset_height_end=1.111111,
+                                                                    offset_height_end=offset_height_end_focus,
                                                                     offset_width=offset_width)
             messages.clear()
-            messages.append(f"ACCELERATION: {ax} | {ay} | {az}")
             messages.append("Time on Target: " + str(timedelta(seconds=secs_on_target)))
             messages.append("Time Elapsed: " + str(timedelta(seconds=int(time.time() - time_started))))
 
@@ -323,11 +321,6 @@ while True:
                 # ToDo: Try to consider a tolerance
                 time_on_target = 0
                 secs_on_target = 0
-                # log(result)
-                # Regulate max speed
-                # result = f.roll_throttle_pitch_v2(movements_from_image[0], movements_from_image[1],
-                #                                   movements_from_image[2],
-                #                                   global_previous_error, max_speed=10)
                 """
                 0: Roll
                 1: Throttle
@@ -448,7 +441,8 @@ while True:
             step_secs = round(time.time() - step_datetime_started)
         # Finding number markers...
         _, number_markers, numbers_img = fp.read_markers(img, size=None, _print=True, range_ids=numbers_range,
-                                                         offset_height=2, offset_height_end=1.176470,
+                                                         offset_height=offset_height_take_picture,
+                                                         offset_height_end=offset_height_end_take_picture,
                                                          offset_width=offset_width)
         img_resize = cv2.resize(numbers_img, size)
         f.put_text(img_resize, "TAKE PICTURE", 528, 50)
@@ -463,12 +457,16 @@ while True:
             step_secs = 0
             markers = False
             r = ""
+            identifier = ""
             for m in number_markers:
                 if r == "":
                     r += str(m[1])
                 else:
                     r = r + " - " + str(m[1])
+                identifier += str(m[1])
             f.put_text(img_resize, r, 528, 110)
+            csv_data = [rack, column, side_marker, level_marker, identifier]
+            csv_writer.writerow(csv_data)
         else:
             # If we found some markers ..
             if len(number_markers) > 0:
@@ -518,8 +516,8 @@ while True:
             _, direction_markers, directions_img = fp.read_markers(img, size=None, _print=True,
                                                                    range_ids=directions_range,
                                                                    offset_height=offset_height,
-                                                                   offset_height_end=1.111111,
-                                                                   offset_width=0.20)
+                                                                   offset_height_end=offset_height_end_find_directions,
+                                                                   offset_width=offset_width_find_directions)
             img_resize = cv2.resize(directions_img, size)
             f.put_text(img_resize, "FIND DIRECTIONS", 528, 50)
             # If we get one marker
@@ -589,7 +587,7 @@ while True:
                 _, next_location_markers, next_location_img = fp.read_markers(img, size=None, _print=True,
                                                                               range_ids=next_location_range,
                                                                               offset_height=offset_height,
-                                                                              offset_height_end=1.111111,
+                                                                              offset_height_end=offset_height_end_next_location,
                                                                               offset_width=offset_width)
                 img_resize = cv2.resize(next_location_img, size)
                 f.put_text(img_resize, "NEXT LOCATION", 528, 50)
@@ -634,10 +632,6 @@ while True:
             # ToDo: Try to consider a tolerance
             time_on_target = 0
             secs_on_target = 0
-            # log(result)
-            # result = f.roll_throttle_pitch_v2(movements_from_image[0], movements_from_image[1],
-            #                                   movements_from_image[2],
-            #                                   global_previous_error)
             """
             0: Roll
             1: Throttle
@@ -800,7 +794,9 @@ while True:
         else:
             log(str(k))
 
+config.release()
 out.release()
 out_processed.release()
 out_log.close()
+out_csv.close()
 cv2.destroyAllWindows()

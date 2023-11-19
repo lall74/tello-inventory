@@ -3,6 +3,13 @@ import math
 import functions as f
 from datetime import datetime
 
+# Pixels per meter
+ppm = 420
+# Area to scan
+area_height = 1.05
+area_width = 1.20
+# In cm
+center_width = 0.15
 messages = []
 
 
@@ -59,14 +66,7 @@ def read(img, me=None, m=None, size=None, print_text=True, range_ids=None, outpu
     now = datetime.now()
     send_message(now.strftime("%d/%m/%Y, %H:%M:%S"), messages)
 
-    # Pixels per meter
-    ppm = 420
-    # Area to scan
-    area_height = 1.05
-    area_width = 1.20
     area_ratio = area_height / area_width
-    # In cm
-    center_width = 0.15
 
     # Resizing image
     if size is not None:
